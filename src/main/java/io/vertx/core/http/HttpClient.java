@@ -63,6 +63,10 @@ public interface HttpClient extends Measured {
    */
   Future<HttpClientRequest> request(RequestOptions options);
 
+  default <T> Future<T> request(RequestOptions options, Function<HttpClientRequest, Future<T>> handler) {
+    return request(options).compose(handler);
+  }
+
   /**
    * Create an HTTP request to send to the server at the {@code host} and {@code port}.
    *
@@ -74,6 +78,10 @@ public interface HttpClient extends Measured {
    */
   Future<HttpClientRequest> request(HttpMethod method, int port, String host, String requestURI);
 
+  default <T> Future<T> request(HttpMethod method, int port, String host, String requestURI, Function<HttpClientRequest, Future<T>> handler) {
+    return request(method, port, host, requestURI).compose(handler);
+  }
+
   /**
    * Create an HTTP request to send to the server at the {@code host} and default port.
    *
@@ -84,6 +92,10 @@ public interface HttpClient extends Measured {
    */
   Future<HttpClientRequest> request(HttpMethod method, String host, String requestURI);
 
+  default <T> Future<T> request(HttpMethod method, String host, String requestURI , Function<HttpClientRequest, Future<T>> handler) {
+    return request(method, host, requestURI).compose(handler);
+  }
+
   /**
    * Create an HTTP request to send to the server at the default host and port.
    *
@@ -92,6 +104,10 @@ public interface HttpClient extends Measured {
    * @return a future notified when the request is ready to be sent
    */
   Future<HttpClientRequest> request(HttpMethod method, String requestURI);
+
+  default <T> Future<T> request(HttpMethod method, String requestURI, Function<HttpClientRequest, Future<T>> handler) {
+    return request(method, requestURI).compose(handler);
+  }
 
   /**
    * Connect a WebSocket to the specified port, host and relative request URI.
