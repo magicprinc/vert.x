@@ -51,9 +51,10 @@ Destroy S
 [<- S: endHandler.handle(null)
 ```
 
-. Todo request and reply
-. Fragmentation
-. Gauge interest
-.. Pascal K.
-.. Stephane Martin
-. service-proxy usage
+## Todo
+
+- Fragmentation
+- Gauge interest
+  - Pascal K.
+  - Stephane Martin
+- service-proxy usage
