@@ -16,7 +16,6 @@ import io.netty.handler.traffic.GlobalTrafficShapingHandler;
 import io.vertx.core.*;
 import io.vertx.core.http.*;
 import io.vertx.core.impl.ContextInternal;
-import io.vertx.core.impl.EventLoopContext;
 import io.vertx.core.impl.future.PromiseInternal;
 import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.impl.logging.Logger;
@@ -134,9 +133,9 @@ public class HttpServerImpl extends TCPServerBase implements HttpServer, Closeab
 
   @Override
   protected BiConsumer<Channel, SslChannelProvider> childHandler(ContextInternal context, SocketAddress address, GlobalTrafficShapingHandler trafficShapingHandler) {
-    EventLoopContext connContext;
-    if (context instanceof EventLoopContext) {
-      connContext = (EventLoopContext) context;
+    ContextInternal connContext;
+    if (context.isEventLoopContext()) {
+      connContext = context;
     } else {
       connContext = vertx.createEventLoopContext(context.nettyEventLoop(), context.workerPool(), context.classLoader());
     }
