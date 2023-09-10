@@ -5,6 +5,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.impl.ContextInternal;
+import io.vertx.core.impl.VertxImpl;
 import io.vertx.core.json.JsonObject;
 import org.junit.After;
 import org.junit.Before;
@@ -83,6 +84,69 @@ public class MessageToQueueConsumerTest {
 
     assertSame(add, consumer.getHandler());
     assertTrue(consumer.isRegistered());
+
+    var pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(THREADS);
+    var startSignal = new CountDownLatch(1);
+
+    IntStream.range(0, THREADS).forEach(idx ->pool.execute(()->{
+      try { startSignal.await(); } catch (InterruptedException ignore){}
+
+      for (int i = 0; i<1_000_000; i++){
+        int n = idx * 1_000_000 + i;
+        eb.send("MessageConsumerImplTest.testHighload", n);
+      }
+    }));
+
+    Thread.sleep(200);// Time to start all threads. Not scientific, but less code than second CountDownLatch
+    long t = System.nanoTime();
+    startSignal.countDown();
+
+    var runtime = Runtime.getRuntime();
+    runtime.gc();
+    System.out.println("Max memory: "+runtime.maxMemory()/1024/1024+", total = "+runtime.totalMemory()/1024/1024);
+
+    while (cnt.get() < MAX){
+      System.out.println("q = "+cnt+"\t mem = "+(runtime.totalMemory()-runtime.freeMemory())/1024/1024);
+      Thread.sleep(500);
+      runtime.gc();// low -Xmx => clean tmp objs
+    }
+
+    t = System.nanoTime() - t;
+
+    System.out.println("q is full :-)");
+
+    assertEquals(0, pool.getActiveCount());
+    assertEquals(THREADS, pool.getCompletedTaskCount());
+    pool.shutdownNow();
+
+    assertEquals(MAX, cnt.get());
+    assertEquals(MAX, numbers.size());
+
+    System.out.println("Msg/sec = "+MAX*1_000_000_000L/t);
+  }
+
+  @Test public void testHighload2 () throws InterruptedException{
+    var cnt = new AtomicInteger();
+    var numbers = new BitSet(MAX);
+
+    Consumer<Message<Integer>> add = m -> {
+      int i = m.body();
+      if (i < 10){
+        System.out.println(Thread.currentThread().getName());
+      }
+      synchronized(numbers){
+        assertFalse(numbers.get(i));
+        numbers.set(i);
+      }
+      cnt.incrementAndGet();
+    };
+
+    new MessageToQueueConsumer<>((ContextInternal) vertx.getOrCreateContext(), (EventBusImpl) eb,
+      "MessageConsumerImplTest.testHighload", false, add);
+    // with getOrCreateContext → same thread
+    new MessageToQueueConsumer<>(((VertxImpl) vertx).createEventLoopContext(), (EventBusImpl) eb,
+      "MessageConsumerImplTest.testHighload", false, add);
+
 
     var pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(THREADS);
     var startSignal = new CountDownLatch(1);
