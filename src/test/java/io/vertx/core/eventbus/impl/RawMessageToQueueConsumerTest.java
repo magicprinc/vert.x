@@ -18,11 +18,15 @@ import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  @author Andrey Fink 2023-09-09
@@ -60,15 +64,27 @@ public class RawMessageToQueueConsumerTest {
 
   @Test public void testHighload () throws InterruptedException{
     var cnt = new AtomicInteger();
+    var inFlight = new AtomicBoolean();
     var numbers = new BitSet(MAX);
+    var threadName = new AtomicReference<String>();
 
     Predicate<Message<Integer>> add = m -> {
-      int i = m.body();
-      synchronized(numbers){
-        assertFalse(numbers.get(i));
-        numbers.set(i);
+      if (inFlight.get()){
+        fail("concurrent call");
       }
+      inFlight.set(true);
+      int i = m.body();
+      assertFalse(numbers.get(i));
+      numbers.set(i);
       cnt.incrementAndGet();
+      inFlight.set(false);
+
+      String tn = Thread.currentThread().getName();
+      if (!tn.equals(threadName.get())){
+        System.err.println("New thread: "+tn);// e.g. vert.x-eventloop-thread-0
+        threadName.set(tn);
+      }
+
       return true;
     };
 
