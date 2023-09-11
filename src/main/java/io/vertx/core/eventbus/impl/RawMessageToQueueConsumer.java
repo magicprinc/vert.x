@@ -53,7 +53,11 @@ public class RawMessageToQueueConsumer<T> extends HandlerRegistration<T> {
    */
   @Override protected boolean doReceive (Message<T> message){
     // × bus.inboundInterceptors(); - they require DeliveryContext :-( too complex ...
-    return toQueue.test(message, this);// usually BlockingQueue::offer
+    boolean added = toQueue.test(message, this);
+    if (added && bus.metrics != null){
+      bus.metrics.messageDelivered(metric, ((MessageImpl<?, T>)message).isLocal());
+    }
+    return added;// usually BlockingQueue::offer
   }
 
   @Override protected void dispatch (Message<T> msg, ContextInternal context){
