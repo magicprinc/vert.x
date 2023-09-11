@@ -18,7 +18,9 @@ import io.vertx.core.impl.verticle.CompilingClassLoader;
 import io.vertx.core.json.JsonObject;
 import io.vertx.test.core.TestUtils;
 import io.vertx.test.core.VertxTestBase;
-import io.vertx.test.verticles.*;
+import io.vertx.test.verticles.TestVerticle;
+import io.vertx.test.verticles.TestVerticle2;
+import io.vertx.test.verticles.TestVerticle3;
 import io.vertx.test.verticles.sourceverticle.SourceVerticle;
 import org.junit.Test;
 
@@ -26,8 +28,17 @@ import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1442,5 +1453,33 @@ public class DeploymentTest extends VertxTestBase {
       }
     }
   }
-}
 
+  @Test public void commonPropsOfSameVerticle () throws ExecutionException, InterruptedException{
+    Vertx v = vertx();
+
+    Set<Object> items = Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
+
+    var f = v.deployVerticle(()->new XVerticle(items), new DeploymentOptions().setInstances(4));
+    f.toCompletionStage().toCompletableFuture().get();
+
+    assertEquals(4*4, items.size());
+  }
+
+  static class XVerticle extends AbstractVerticle {
+    final Set<Object> items;
+
+    public XVerticle (Set<Object> items){
+      this.items = items;
+    }
+    @Override public void start () throws Exception{
+      super.start();
+      ConcurrentMap<Object,Object> map = ( (ContextInternal) Vertx.currentContext() ).contextData();
+      System.out.println(this+" \t "+ Vertx.currentContext()+" \t "+Thread.currentThread()+" \t "+ map+" \t "+System.identityHashCode(map));
+
+      items.add(this);
+      items.add(Vertx.currentContext());
+      items.add(Thread.currentThread());
+      items.add(map);
+    }
+  }
+}
