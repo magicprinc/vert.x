@@ -1,5 +1,6 @@
 package io.vertx.core.eventbus.impl;
 
+import io.netty.channel.nio.NioEventLoop;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
@@ -93,6 +94,7 @@ public class MessageConsumerImplTest {
     var cnt = new AtomicInteger();
     var inFlight = new AtomicBoolean();
     var numbers = new BitSet(MAX);
+    var pendingTasksNetty = new AtomicInteger();
 
     Handler<Message<Integer>> add = m -> {
       if (inFlight.get()){
@@ -104,6 +106,10 @@ public class MessageConsumerImplTest {
       numbers.set(i);
       cnt.incrementAndGet();
       inFlight.set(false);
+
+      var ctx = (ContextInternal) Vertx.currentContext();//= ContextInternal.current()
+      var eventExecutors = (NioEventLoop) ctx.nettyEventLoop();
+      pendingTasksNetty.set(eventExecutors.pendingTasks());
     };
 
     var consumer = (MessageConsumerImpl<Integer>) eb.consumer("MessageConsumerImplTest.testHighload", add);
@@ -131,7 +137,8 @@ public class MessageConsumerImplTest {
     System.out.println("Max memory: "+runtime.maxMemory()/1024/1024+", total = "+runtime.totalMemory()/1024/1024);
 
     while (cnt.get() < MAX){
-      System.out.println("q = "+cnt+"\t p = "+consumer.getPendingQueueSize()+"\t mem = "+(runtime.totalMemory()-runtime.freeMemory())/1024/1024);
+      System.out.println("q = "+cnt+"\t p = "+consumer.getPendingQueueSize()+"\t np = "+pendingTasksNetty.get()+
+        "\t mem = "+(runtime.totalMemory()-runtime.freeMemory())/1024/1024);
       Thread.sleep(500);
       runtime.gc();// low -Xmx => clean tmp objs
     }
