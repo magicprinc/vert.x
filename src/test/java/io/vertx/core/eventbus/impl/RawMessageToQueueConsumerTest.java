@@ -19,7 +19,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Predicate;
+import java.util.function.BiPredicate;
 import java.util.stream.IntStream;
 
 import static org.junit.Assert.assertEquals;
@@ -52,7 +52,7 @@ public class RawMessageToQueueConsumerTest {
 		var msgQueue = new LinkedBlockingDeque<Message<JsonObject>>();
 
 		new RawMessageToQueueConsumer<>((ContextInternal) vertx.getOrCreateContext(), (EventBusImpl) eb,
-				"kaka.foo", false, (Message<JsonObject> m)->msgQueue.offer(m));
+				"kaka.foo", false, (Message<JsonObject> m, RawMessageToQueueConsumer<JsonObject> o)->msgQueue.offer(m));
 
 		sender.write(JsonObject.of("msg", "Hi!")).toCompletionStage().toCompletableFuture().get();
 		sender.write(JsonObject.of("msg", "there")).toCompletionStage().toCompletableFuture().get();
@@ -68,7 +68,7 @@ public class RawMessageToQueueConsumerTest {
     var numbers = new BitSet(MAX);
     var threadName = new AtomicReference<String>();
 
-    Predicate<Message<Integer>> add = m -> {
+    BiPredicate<Message<Integer>,RawMessageToQueueConsumer<Integer>> add = (m,o) -> {
       if (inFlight.get()){
         fail("concurrent call");
       }

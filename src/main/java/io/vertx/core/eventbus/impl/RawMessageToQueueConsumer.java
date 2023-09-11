@@ -6,8 +6,7 @@ import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.impl.logging.Logger;
 import io.vertx.core.impl.logging.LoggerFactory;
 
-import java.util.function.Consumer;
-import java.util.function.Predicate;
+import java.util.function.BiPredicate;
 
 /**
  * This class is optimized for performance when used on the same event loop it was created on.
@@ -26,9 +25,9 @@ public class RawMessageToQueueConsumer<T> extends HandlerRegistration<T> {
 
   private static final Logger log = LoggerFactory.getLogger(RawMessageToQueueConsumer.class);
 
-  private final Predicate<Message<T>> toQueue;
+  private final BiPredicate<Message<T>,RawMessageToQueueConsumer<T>> toQueue;
 
-  public RawMessageToQueueConsumer (ContextInternal context, EventBusImpl eventBus, String address, boolean localOnly, Predicate<Message<T>> toQueue){
+  public RawMessageToQueueConsumer (ContextInternal context, EventBusImpl eventBus, String address, boolean localOnly, BiPredicate<Message<T>,RawMessageToQueueConsumer<T>> toQueue){
     super(context, eventBus, address, false);
     this.toQueue = toQueue;
 
@@ -54,15 +53,15 @@ public class RawMessageToQueueConsumer<T> extends HandlerRegistration<T> {
    */
   @Override protected boolean doReceive (Message<T> message){
     // × bus.inboundInterceptors(); - they require DeliveryContext :-( too complex ...
-    return toQueue.test(message);// usually BlockingQueue::offer
+    return toQueue.test(message, this);// usually BlockingQueue::offer
   }
 
   @Override protected void dispatch (Message<T> msg, ContextInternal context){
     // context.dispatch(msg, handler);
-    throw new IllegalStateException("dispatch: must not be used: HandlerRegistration.receive → #doReceive → dispatch → #dispatch: "+msg);
+    throw new IllegalStateException("dispatch: must not be called: HandlerRegistration.receive → #doReceive → dispatch → #dispatch: "+msg);
   }
 
-  public Predicate<Message<T>> getHandler (){
+  public BiPredicate<Message<T>,RawMessageToQueueConsumer<T>> getHandler (){
     return toQueue;
   }
 }

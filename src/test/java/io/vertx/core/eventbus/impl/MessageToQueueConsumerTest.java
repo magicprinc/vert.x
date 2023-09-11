@@ -1,6 +1,8 @@
 package io.vertx.core.eventbus.impl;
 
 
+import io.netty.channel.nio.NioEventLoop;
+import io.vertx.core.Context;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
@@ -19,11 +21,12 @@ import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 import java.util.stream.IntStream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -52,7 +55,7 @@ public class MessageToQueueConsumerTest {
     var msgQueue = new LinkedBlockingDeque<Message<JsonObject>>();
 
     new MessageToQueueConsumer<>((ContextInternal) vertx.getOrCreateContext(), (EventBusImpl) eb,
-      "kaka.foo", false, (Message<JsonObject> m)->msgQueue.offer(m));
+      "kaka.foo", false, (Message<JsonObject> m,MessageToQueueConsumer<JsonObject> o)->msgQueue.offer(m));
 
     sender.write(JsonObject.of("msg", "Hi!")).toCompletionStage().toCompletableFuture().get();
     sender.write(JsonObject.of("msg", "there")).toCompletionStage().toCompletableFuture().get();
@@ -66,8 +69,9 @@ public class MessageToQueueConsumerTest {
     var cnt = new AtomicInteger();
     var inFlight = new AtomicBoolean();
     var numbers = new BitSet(MAX);
+    var pendingTasksNetty = new AtomicInteger();
 
-    Consumer<Message<Integer>> add = m -> {
+    BiConsumer<Message<Integer>,MessageToQueueConsumer<Integer>> add = (m,o) -> {
       if (inFlight.get()){
         fail("concurrent call");
       }
@@ -77,6 +81,12 @@ public class MessageToQueueConsumerTest {
       numbers.set(i);
       cnt.incrementAndGet();
       inFlight.set(false);
+
+      assertTrue(Context.isOnEventLoopThread());
+      var ctx = (ContextInternal) Vertx.currentContext();//= ContextInternal.current()
+      assertNull(ctx);
+      var eventExecutors = (NioEventLoop) o.context.nettyEventLoop();
+      pendingTasksNetty.set(eventExecutors.pendingTasks());
     };
 
     var consumer = new MessageToQueueConsumer<>((ContextInternal) vertx.getOrCreateContext(), (EventBusImpl) eb,
@@ -106,7 +116,8 @@ public class MessageToQueueConsumerTest {
     System.out.println("Max memory: "+runtime.maxMemory()/1024/1024+", total = "+runtime.totalMemory()/1024/1024);
 
     while (cnt.get() < MAX){
-      System.out.println("q = "+cnt+"\t mem = "+(runtime.totalMemory()-runtime.freeMemory())/1024/1024);
+      System.out.println("q = "+cnt+"\t np = "+pendingTasksNetty.get()+
+        "\t mem = "+(runtime.totalMemory()-runtime.freeMemory())/1024/1024);
       Thread.sleep(500);
       runtime.gc();// low -Xmx => clean tmp objs
     }
@@ -123,13 +134,16 @@ public class MessageToQueueConsumerTest {
     assertEquals(MAX, numbers.size());
 
     System.out.println("Msg/sec = "+MAX*1_000_000_000L/t);
+
+    var eventExecutors = (NioEventLoop) consumer.context.nettyEventLoop();
+    System.out.println("Netty pending = "+eventExecutors.pendingTasks());
   }
 
   @Test public void testHighload2 () throws InterruptedException{
     var cnt = new AtomicInteger();
     var numbers = new BitSet(MAX);
 
-    Consumer<Message<Integer>> add = m -> {
+    BiConsumer<Message<Integer>,MessageToQueueConsumer<Integer>> add = (m,o) -> {
       int i = m.body();
       if (i < 10){
         System.out.println(Thread.currentThread().getName());

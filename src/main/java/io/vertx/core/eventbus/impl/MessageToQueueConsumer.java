@@ -1,13 +1,12 @@
 package io.vertx.core.eventbus.impl;
 
-import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.impl.logging.Logger;
 import io.vertx.core.impl.logging.LoggerFactory;
 
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 /**
  * This class is optimized for performance when used on the same event loop it was created on.
@@ -24,9 +23,9 @@ public class MessageToQueueConsumer<T> extends HandlerRegistration<T> {
 
   private static final Logger log = LoggerFactory.getLogger(MessageToQueueConsumer.class);
 
-  private final Consumer<Message<T>> toQueue;
+  private final BiConsumer<Message<T>,MessageToQueueConsumer<T>> toQueue;
 
-  public MessageToQueueConsumer (ContextInternal context, EventBusImpl eventBus, String address, boolean localOnly, Consumer<Message<T>> toQueue){
+  public MessageToQueueConsumer (ContextInternal context, EventBusImpl eventBus, String address, boolean localOnly, BiConsumer<Message<T>,MessageToQueueConsumer<T>> toQueue){
     super(context, eventBus, address, false);
     this.toQueue = toQueue;
 
@@ -55,11 +54,15 @@ public class MessageToQueueConsumer<T> extends HandlerRegistration<T> {
     return true;// BUT: -1) always accept message, event is queue is full  -2) more calls and "layers"
   }
 
-  @Override protected void dispatch (Message<T> msg, ContextInternal context){
-    toQueue.accept(msg);
+  @Override protected void dispatch (Message<T> msg, ContextInternal contextIsEqThisContext){
+    try {
+      toQueue.accept(msg, this);
+    } catch (Throwable t){
+      context.reportException(t);
+    }
   }
 
-  public Consumer<Message<T>> getHandler (){
+  public BiConsumer<Message<T>,MessageToQueueConsumer<T>> getHandler (){
     return toQueue;
   }
 }
