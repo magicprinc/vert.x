@@ -39,6 +39,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1481,5 +1483,59 @@ public class DeploymentTest extends VertxTestBase {
       items.add(Thread.currentThread());
       items.add(map);
     }
+  }
+  @Test public void testWorkerConcurrency () throws ExecutionException, InterruptedException{
+    Vertx v = vertx();
+
+    var active = new AtomicInteger();// result: up to 20 (def work pool size) concurrent executions
+    var active2 = new AtomicInteger();// result: up to 20 (def work pool size) concurrent executions
+    var ctx = new AtomicReference<Context>();
+
+    var f = v.deployVerticle(()->new AbstractVerticle(){
+        @Override public void start () throws Exception{
+          super.start();
+          ctx.set(context);
+
+          for (int i=0; i<100; i++){
+            getVertx().executeBlocking(()->{
+              active.incrementAndGet();
+              try { Thread.sleep(500); } catch (Exception ignore){ }
+              System.out.println(Thread.currentThread().getName()+": "+ active.getAndDecrement());
+              return 0;
+            }, false);
+          }
+          System.out.println(Thread.currentThread().getName()+": done with executeBlocking\n\n\n");
+
+          getVertx().eventBus().consumer("a1", m->{
+            active2.incrementAndGet();
+            try { Thread.sleep(10); } catch (Exception ignore){ }
+            System.out.println(Thread.currentThread().getName()+" A: "+ active2.getAndDecrement());
+          });
+          getVertx().eventBus().consumer("a2", m->{
+            active2.incrementAndGet();
+            Thread.yield();
+            System.out.println(Thread.currentThread().getName()+" B: "+ active2.getAndDecrement());
+          });
+          System.out.println(Thread.currentThread().getName()+": done with start\n\n\n");
+        }
+      }, new DeploymentOptions().setInstances(1).setWorker(true));
+    f.toCompletionStage().toCompletableFuture().get();// all are deployed
+
+    Executor tp = Executors.newCachedThreadPool();
+    for (int i=0; i<10; i++){
+      tp.execute(()->{
+        for (int j = 0; j < 50; j++){
+          v.eventBus().send("a1", j);
+          v.eventBus().send("a2", -j);
+          ctx.get().runOnContext(ignore->{
+            active2.incrementAndGet();
+            Thread.yield();
+            System.out.println(Thread.currentThread().getName() + " C: " + active2.getAndDecrement());
+          });
+        }
+      });
+    }
+
+    assertTrue(ctx.get().isWorkerContext());
   }
 }
