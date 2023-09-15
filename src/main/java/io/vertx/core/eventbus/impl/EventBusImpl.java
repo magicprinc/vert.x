@@ -277,11 +277,10 @@ public class EventBusImpl implements EventBusInternal, MetricsProvider {
 
     HandlerHolder<T> holder = createHandlerHolder(registration, replyHandler, localOnly, context);
 
-    ConcurrentCyclicSequence<HandlerHolder> handlers = new ConcurrentCyclicSequence<HandlerHolder>().add(holder);
-    ConcurrentCyclicSequence<HandlerHolder> actualHandlers = handlerMap.merge(
-      address,
-      handlers,
-      (old, prev) -> old.add(prev.first()));
+    ConcurrentCyclicSequence<HandlerHolder> actualHandlers = handlerMap.compute(address,
+      (adr, prev) -> prev == null // first? => insert new
+        ? new ConcurrentCyclicSequence<HandlerHolder>().add(holder)
+        : prev.add(holder));
 
     if (context.isDeployment()) {
       context.addCloseHook(registration);
